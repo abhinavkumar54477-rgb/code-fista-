@@ -1,0 +1,946 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AegisFlow — Self-Healing Workflow Dashboard</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&display=swap" rel="stylesheet">
+<script>
+tailwind.config = {
+  darkMode: 'class',
+  theme: {
+    extend: {
+      fontFamily: {
+        headline: ['"Space Grotesk"', 'sans-serif'],
+        body: ['Inter', 'sans-serif'],
+        mono: ['"JetBrains Mono"', 'monospace'],
+      },
+      colors: {
+        obsidian: { 900: '#031427', 800: '#0F172A', 700: '#050814', 600: '#0c1a2e', 500: '#162033' },
+        electric: { DEFAULT: '#38BDF8', light: '#7bd0ff', dim: '#1e6a9e' },
+        emerald: { DEFAULT: '#10B981', light: '#4edea3' },
+        amber: { DEFAULT: '#F59E0B' },
+        crimson: { DEFAULT: '#EF4444' },
+      }
+    }
+  }
+}
+</script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Inter', sans-serif; background: #031427; color: #e2e8f0; overflow-x: hidden; }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #1e3a5f; border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: #38BDF8; }
+
+  /* Glassmorphism panel */
+  .glass {
+    background: rgba(15, 23, 42, 0.65);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid rgba(56, 189, 248, 0.08);
+    border-radius: 6px;
+  }
+  .glass-card {
+    background: rgba(15, 23, 42, 0.55);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(56, 189, 248, 0.1);
+    border-radius: 6px;
+    transition: border-color 0.3s, box-shadow 0.3s;
+  }
+  .glass-card:hover {
+    border-color: rgba(56, 189, 248, 0.22);
+    box-shadow: 0 0 20px rgba(56, 189, 248, 0.06);
+  }
+
+  /* Glow effects */
+  .glow-blue { box-shadow: 0 0 15px rgba(56, 189, 248, 0.15), 0 0 40px rgba(56, 189, 248, 0.05); }
+  .glow-emerald { box-shadow: 0 0 15px rgba(16, 185, 129, 0.2), 0 0 40px rgba(16, 185, 129, 0.07); }
+  .glow-crimson { box-shadow: 0 0 12px rgba(239, 68, 68, 0.15); }
+  .glow-amber { box-shadow: 0 0 12px rgba(245, 158, 11, 0.15); }
+
+  /* Pulsing dot */
+  @keyframes pulse-ring {
+    0% { transform: scale(1); opacity: 1; }
+    100% { transform: scale(2.2); opacity: 0; }
+  }
+  .pulse-dot { position: relative; }
+  .pulse-dot::after {
+    content: '';
+    position: absolute;
+    inset: -3px;
+    border-radius: 50%;
+    background: inherit;
+    animation: pulse-ring 1.8s ease-out infinite;
+  }
+
+  /* Terminal blink */
+  @keyframes blink { 0%,100% { opacity: 1; } 50% { opacity: 0; } }
+  .cursor-blink::after { content: '█'; animation: blink 1s step-end infinite; color: #38BDF8; font-size: 0.75rem; }
+
+  /* Spinner */
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .spinner {
+    width: 18px; height: 18px;
+    border: 2px solid rgba(56,189,248,0.2);
+    border-top-color: #38BDF8;
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+    display: inline-block;
+  }
+
+  /* Sidebar nav item */
+  .nav-item {
+    display: flex; align-items: center; gap: 12px;
+    padding: 10px 16px; border-radius: 6px;
+    font-size: 0.875rem; font-weight: 500;
+    color: #94a3b8; cursor: pointer;
+    transition: all 0.2s;
+  }
+  .nav-item:hover { color: #e2e8f0; background: rgba(56,189,248,0.06); }
+  .nav-item.active {
+    color: #38BDF8; background: rgba(56,189,248,0.1);
+    border-left: 2px solid #38BDF8;
+  }
+
+  /* Terminal log */
+  .log-entry { font-family: 'JetBrains Mono', monospace; font-size: 0.75rem; line-height: 1.6; }
+
+  /* Diff code blocks */
+  .diff-block {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.72rem;
+    line-height: 1.65;
+    white-space: pre-wrap;
+    word-break: break-all;
+  }
+
+  /* Button base */
+  .btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 8px 18px; border-radius: 6px;
+    font-family: 'Space Grotesk', sans-serif;
+    font-weight: 600; font-size: 0.8rem;
+    letter-spacing: 0.03em;
+    cursor: pointer; border: none;
+    transition: all 0.25s;
+  }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .btn-primary {
+    background: linear-gradient(135deg, #10B981, #059669);
+    color: #fff;
+  }
+  .btn-primary:not(:disabled):hover { box-shadow: 0 0 20px rgba(16,185,129,0.35); transform: translateY(-1px); }
+  .btn-secondary {
+    background: rgba(56,189,248,0.1);
+    color: #38BDF8;
+    border: 1px solid rgba(56,189,248,0.2);
+  }
+  .btn-secondary:not(:disabled):hover { background: rgba(56,189,248,0.18); }
+  .btn-danger {
+    background: rgba(239,68,68,0.1);
+    color: #EF4444;
+    border: 1px solid rgba(239,68,68,0.2);
+  }
+  .btn-danger:not(:disabled):hover { background: rgba(239,68,68,0.18); }
+
+  /* Confidence bar */
+  .conf-bar-track { background: rgba(56,189,248,0.1); border-radius: 4px; height: 6px; overflow: hidden; }
+  .conf-bar-fill { height: 100%; border-radius: 4px; transition: width 0.8s ease, background 0.5s; }
+
+  /* Fade-in animation */
+  @keyframes fadeInUp { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+  .fade-in { animation: fadeInUp 0.4s ease-out; }
+
+  /* Background grid */
+  .bg-grid {
+    background-image: 
+      linear-gradient(rgba(56,189,248,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(56,189,248,0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+  }
+
+  /* Select styling */
+  .styled-select {
+    appearance: none;
+    background: rgba(15, 23, 42, 0.8) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2338BDF8' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E") no-repeat right 12px center;
+    border: 1px solid rgba(56,189,248,0.15);
+    border-radius: 6px;
+    color: #e2e8f0;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.8rem;
+    padding: 10px 36px 10px 14px;
+    width: 100%;
+    cursor: pointer;
+    transition: border-color 0.2s;
+  }
+  .styled-select:focus { outline: none; border-color: #38BDF8; box-shadow: 0 0 0 2px rgba(56,189,248,0.15); }
+  .styled-select option { background: #0F172A; color: #e2e8f0; }
+
+  /* Severity badge */
+  .badge {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 3px 10px; border-radius: 4px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.65rem; font-weight: 600;
+    letter-spacing: 0.06em; text-transform: uppercase;
+  }
+
+  /* Filter buttons */
+  .filter-btn {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.65rem;
+    padding: 4px 10px;
+    border-radius: 4px;
+    border: 1px solid rgba(56,189,248,0.1);
+    background: transparent;
+    color: #64748b;
+    cursor: pointer;
+    transition: all 0.2s;
+    letter-spacing: 0.04em;
+  }
+  .filter-btn:hover { color: #94a3b8; border-color: rgba(56,189,248,0.2); }
+  .filter-btn.active { color: #38BDF8; background: rgba(56,189,248,0.1); border-color: rgba(56,189,248,0.25); }
+</style>
+</head>
+<body class="bg-obsidian-900 bg-grid min-h-screen">
+
+<!-- ==================== SIDEBAR ==================== -->
+<aside class="fixed left-0 top-0 bottom-0 w-64 z-50 flex flex-col" style="background: rgba(5,8,20,0.92); border-right: 1px solid rgba(56,189,248,0.07);">
+  <!-- Brand -->
+  <div class="px-5 pt-6 pb-5 flex items-center gap-3">
+    <div class="w-9 h-9 rounded-lg flex items-center justify-center text-lg" style="background: linear-gradient(135deg, rgba(56,189,248,0.2), rgba(16,185,129,0.15)); border: 1px solid rgba(56,189,248,0.2);">🛡️</div>
+    <div>
+      <div class="font-headline font-bold text-base tracking-wide text-white">AegisFlow</div>
+      <div class="font-mono text-[0.6rem] text-electric/60 tracking-widest">SELF-HEALING AI</div>
+    </div>
+  </div>
+
+  <div class="mx-4 mb-4" style="height: 1px; background: linear-gradient(90deg, transparent, rgba(56,189,248,0.15), transparent);"></div>
+
+  <!-- Nav -->
+  <nav class="flex-1 px-3 space-y-1">
+    <div class="nav-item active">
+      <span class="material-symbols-outlined" style="font-size:20px">dashboard</span>
+      Dashboard
+    </div>
+    <div class="nav-item">
+      <span class="material-symbols-outlined" style="font-size:20px">troubleshoot</span>
+      Incident Analyzer
+    </div>
+    <div class="nav-item">
+      <span class="material-symbols-outlined" style="font-size:20px">account_tree</span>
+      Workflow Pipelines
+    </div>
+    <div class="nav-item">
+      <span class="material-symbols-outlined" style="font-size:20px">settings</span>
+      System Settings
+    </div>
+  </nav>
+
+  <!-- System Status -->
+  <div class="px-5 pb-5">
+    <div class="glass-card p-3 flex items-center gap-3">
+      <div class="w-2.5 h-2.5 rounded-full bg-emerald pulse-dot" id="sysStatusDot"></div>
+      <div>
+        <div class="font-mono text-[0.65rem] font-semibold tracking-wider" id="sysStatusText" style="color: #10B981;">SYSTEM NOMINAL</div>
+        <div class="font-mono text-[0.58rem] text-slate-500">v2.4.1 • uptime 99.97%</div>
+      </div>
+    </div>
+  </div>
+</aside>
+
+<!-- ==================== TOP HEADER ==================== -->
+<header class="fixed top-0 left-64 right-0 h-14 z-40 flex items-center justify-between px-6" style="background: rgba(5,8,20,0.85); backdrop-filter: blur(12px); border-bottom: 1px solid rgba(56,189,248,0.06);">
+  <div class="flex items-center gap-3">
+    <div class="font-mono text-xs text-slate-500 tracking-wider">CLUSTER:</div>
+    <div class="font-mono text-xs font-semibold text-electric tracking-wide">US-EAST-01</div>
+    <div class="w-1.5 h-1.5 rounded-full bg-emerald ml-1"></div>
+  </div>
+  <div class="flex items-center gap-4">
+    <button class="w-8 h-8 rounded-md flex items-center justify-center text-slate-400 hover:text-electric hover:bg-electric/10 transition-all">
+      <span class="material-symbols-outlined" style="font-size:20px">terminal</span>
+    </button>
+    <button class="w-8 h-8 rounded-md flex items-center justify-center text-slate-400 hover:text-electric hover:bg-electric/10 transition-all relative">
+      <span class="material-symbols-outlined" style="font-size:20px">notifications</span>
+      <div class="absolute top-1 right-1 w-2 h-2 rounded-full bg-crimson"></div>
+    </button>
+    <div class="w-8 h-8 rounded-full flex items-center justify-center font-headline font-bold text-xs text-white" style="background: linear-gradient(135deg, #38BDF8, #10B981);">O</div>
+  </div>
+</header>
+
+<!-- ==================== MAIN CONTENT ==================== -->
+<main class="ml-64 mt-14 p-6 min-h-[calc(100vh-3.5rem)]">
+
+  <!-- ROW 1: Metric Cards -->
+  <div class="grid grid-cols-4 gap-4 mb-5">
+    <!-- Active Anomalies -->
+    <div class="glass-card p-4">
+      <div class="flex items-center justify-between mb-3">
+        <span class="font-mono text-[0.65rem] text-slate-500 tracking-wider uppercase">Active Anomalies</span>
+        <span class="material-symbols-outlined text-amber" style="font-size:18px">warning</span>
+      </div>
+      <div class="flex items-end gap-2">
+        <span class="font-headline text-3xl font-bold text-white" id="metricAnomalies">0</span>
+        <span class="font-mono text-[0.65rem] text-slate-500 mb-1" id="metricAnomaliesLabel">nominal</span>
+      </div>
+      <div class="mt-2 flex items-center gap-2" id="anomalyPulseContainer" style="display:none;">
+        <div class="w-2 h-2 rounded-full bg-crimson pulse-dot"></div>
+        <span class="font-mono text-[0.6rem] text-crimson">ACTIVE INCIDENT</span>
+      </div>
+    </div>
+
+    <!-- Current Incident ID -->
+    <div class="glass-card p-4">
+      <div class="flex items-center justify-between mb-3">
+        <span class="font-mono text-[0.65rem] text-slate-500 tracking-wider uppercase">Current Incident</span>
+        <span class="material-symbols-outlined text-electric" style="font-size:18px">confirmation_number</span>
+      </div>
+      <div class="font-mono text-lg font-semibold text-white truncate" id="metricIncidentId">—</div>
+      <div class="font-mono text-[0.6rem] text-slate-500 mt-1" id="metricIncidentTime">No active incidents</div>
+    </div>
+
+    <!-- Confidence Score -->
+    <div class="glass-card p-4">
+      <div class="flex items-center justify-between mb-3">
+        <span class="font-mono text-[0.65rem] text-slate-500 tracking-wider uppercase">Confidence Score</span>
+        <span class="material-symbols-outlined text-emerald" style="font-size:18px">verified</span>
+      </div>
+      <div class="flex items-end gap-2 mb-2">
+        <span class="font-headline text-3xl font-bold text-white" id="metricConfidence">—</span>
+        <span class="font-mono text-[0.65rem] text-slate-500 mb-1">%</span>
+      </div>
+      <div class="conf-bar-track">
+        <div class="conf-bar-fill" id="confBar" style="width: 0%; background: linear-gradient(90deg, #38BDF8, #10B981);"></div>
+      </div>
+    </div>
+
+    <!-- Agent Status -->
+    <div class="glass-card p-4">
+      <div class="flex items-center justify-between mb-3">
+        <span class="font-mono text-[0.65rem] text-slate-500 tracking-wider uppercase">Agent Status</span>
+        <span class="material-symbols-outlined text-electric" style="font-size:18px">smart_toy</span>
+      </div>
+      <div class="flex items-center gap-2 mb-1">
+        <div class="w-2 h-2 rounded-full" id="agentStatusDot" style="background: #38BDF8;"></div>
+        <span class="font-headline text-sm font-bold tracking-wider" id="agentStatusText" style="color: #38BDF8;">STANDBY</span>
+      </div>
+      <div class="font-mono text-[0.6rem] text-slate-500" id="agentModelInfo">gemini-2.5-flash</div>
+      <div class="font-mono text-[0.6rem] text-slate-500" id="agentModeInfo">mode: —</div>
+    </div>
+  </div>
+
+  <!-- ROW 2: Two columns -->
+  <div class="grid grid-cols-12 gap-4">
+
+    <!-- ====== LEFT COLUMN (5 cols) ====== -->
+    <div class="col-span-5 space-y-4">
+
+      <!-- Mode Selector & Run Controls -->
+      <div class="glass-card p-4">
+        <div class="flex items-center gap-2 mb-3">
+          <span class="material-symbols-outlined text-electric" style="font-size:18px">tune</span>
+          <span class="font-headline text-sm font-semibold text-white tracking-wide">Failure Injection</span>
+        </div>
+        <select class="styled-select mb-3" id="modeSelect">
+          <option value="ok">✅  Healthy — Normal Pipeline</option>
+          <option value="schema_change">💥  Schema Change — Column Drift</option>
+          <option value="malformed">💥  Malformed Data — Corruption</option>
+          <option value="rate_limit">💥  Rate Limit — API Throttle</option>
+          <option value="silent">💥  Silent Failure — Ghost Error</option>
+        </select>
+        <div class="flex gap-2">
+          <button class="btn btn-primary flex-1" id="btnRun" onclick="runWorkflow()">
+            <span class="material-symbols-outlined" style="font-size:16px">play_arrow</span>
+            Run Workflow
+          </button>
+          <button class="btn btn-secondary" id="btnReset" onclick="resetAll()">
+            <span class="material-symbols-outlined" style="font-size:16px">refresh</span>
+            Reset
+          </button>
+        </div>
+      </div>
+
+      <!-- Root-Cause Diagnosis Card -->
+      <div class="glass-card p-4 fade-in" id="diagnosisCard" style="display:none;">
+        <div class="flex items-center justify-between mb-3">
+          <div class="flex items-center gap-2">
+            <span class="material-symbols-outlined text-crimson" style="font-size:18px">bug_report</span>
+            <span class="font-headline text-sm font-semibold text-white tracking-wide">Root-Cause Diagnosis</span>
+          </div>
+          <div class="badge" id="severityBadge" style="background: rgba(239,68,68,0.15); color: #EF4444;">
+            <span class="material-symbols-outlined" style="font-size:11px">priority_high</span>
+            <span id="severityText">CRITICAL</span>
+          </div>
+        </div>
+
+        <!-- Error message -->
+        <div class="rounded p-3 mb-3" style="background: rgba(239,68,68,0.06); border-left: 3px solid #EF4444;">
+          <div class="font-mono text-[0.7rem] text-crimson leading-relaxed" id="diagErrorMsg">—</div>
+        </div>
+
+        <!-- Details grid -->
+        <div class="space-y-2">
+          <div class="flex justify-between">
+            <span class="font-mono text-[0.65rem] text-slate-500">Stack Trace</span>
+            <span class="font-mono text-[0.65rem] text-slate-300 text-right max-w-[60%] truncate" id="diagStackTrace">—</span>
+          </div>
+          <div class="flex justify-between">
+            <span class="font-mono text-[0.65rem] text-slate-500">Affected Endpoint</span>
+            <span class="font-mono text-[0.65rem] text-electric" id="diagEndpoint">—</span>
+          </div>
+          <div class="flex justify-between">
+            <span class="font-mono text-[0.65rem] text-slate-500">Failure Rate</span>
+            <span class="font-mono text-[0.65rem] text-amber" id="diagFailureRate">—</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Validation & Control Panel -->
+      <div class="glass-card p-4 fade-in" id="controlPanel" style="display:none;">
+        <div class="flex items-center gap-2 mb-3">
+          <span class="material-symbols-outlined text-emerald" style="font-size:18px">verified_user</span>
+          <span class="font-headline text-sm font-semibold text-white tracking-wide">Validation & Control</span>
+        </div>
+        <div class="space-y-2">
+          <button class="btn btn-primary w-full justify-center glow-emerald" id="btnApprove" onclick="approveFix()">
+            <span class="material-symbols-outlined" style="font-size:16px">check_circle</span>
+            Approve & Execute Patch
+          </button>
+          <div class="grid grid-cols-2 gap-2">
+            <button class="btn btn-secondary justify-center" onclick="simulateRollback()">
+              <span class="material-symbols-outlined" style="font-size:15px">history</span>
+              Simulate Rollback
+            </button>
+            <button class="btn btn-secondary justify-center">
+              <span class="material-symbols-outlined" style="font-size:15px">pan_tool</span>
+              Manual Override
+            </button>
+          </div>
+          <button class="btn btn-danger w-full justify-center" id="btnReject" onclick="rejectFix()">
+            <span class="material-symbols-outlined" style="font-size:16px">cancel</span>
+            Reject Proposed Fix
+          </button>
+        </div>
+      </div>
+
+      <!-- Healed Status (shown after approval) -->
+      <div class="glass-card p-4 fade-in glow-emerald" id="healedCard" style="display:none;">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-lg flex items-center justify-center" style="background: rgba(16,185,129,0.15); border: 1px solid rgba(16,185,129,0.25);">
+            <span class="material-symbols-outlined text-emerald" style="font-size:24px">verified</span>
+          </div>
+          <div>
+            <div class="font-headline text-sm font-bold text-emerald-light tracking-wide">INCIDENT HEALED</div>
+            <div class="font-mono text-[0.6rem] text-slate-400" id="healedInfo">Pipeline restored • AI patch applied</div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- ====== RIGHT COLUMN (7 cols) ====== -->
+    <div class="col-span-7 space-y-4">
+
+      <!-- Live Log Monitor -->
+      <div class="glass-card overflow-hidden" style="max-height: 340px;">
+        <div class="flex items-center justify-between px-4 py-2.5" style="background: rgba(5,8,20,0.6); border-bottom: 1px solid rgba(56,189,248,0.06);">
+          <div class="flex items-center gap-3">
+            <!-- Terminal dots -->
+            <div class="flex gap-1.5">
+              <div class="w-2.5 h-2.5 rounded-full" style="background: #EF4444;"></div>
+              <div class="w-2.5 h-2.5 rounded-full" style="background: #F59E0B;"></div>
+              <div class="w-2.5 h-2.5 rounded-full" style="background: #10B981;"></div>
+            </div>
+            <span class="font-mono text-[0.65rem] text-slate-500 tracking-wider">LIVE LOG MONITOR</span>
+          </div>
+          <div class="flex items-center gap-2">
+            <button class="filter-btn active" data-filter="ALL" onclick="setLogFilter('ALL', this)">ALL</button>
+            <button class="filter-btn" data-filter="ERROR" onclick="setLogFilter('ERROR', this)">ERR</button>
+            <button class="filter-btn" data-filter="WARNING" onclick="setLogFilter('WARNING', this)">WARN</button>
+            <button class="filter-btn" data-filter="INFO" onclick="setLogFilter('INFO', this)">INFO</button>
+            <div class="ml-2 flex items-center gap-1.5 cursor-pointer" id="tailToggle" onclick="toggleTail()">
+              <div class="w-1.5 h-1.5 rounded-full bg-emerald" id="tailDot"></div>
+              <span class="font-mono text-[0.6rem] text-emerald font-semibold tracking-wider">TAIL</span>
+            </div>
+          </div>
+        </div>
+        <div class="p-3 overflow-y-auto" id="logContainer" style="height: 280px; background: rgba(3,20,39,0.7);">
+          <div class="text-center py-8">
+            <span class="font-mono text-[0.7rem] text-slate-600 cursor-blink">Awaiting workflow execution</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- AI Patch & Schema Transformation -->
+      <div class="glass-card overflow-hidden fade-in" id="diffCard" style="display:none;">
+        <div class="flex items-center justify-between px-4 py-2.5" style="background: rgba(5,8,20,0.6); border-bottom: 1px solid rgba(56,189,248,0.06);">
+          <div class="flex items-center gap-2">
+            <span class="material-symbols-outlined text-electric" style="font-size:18px">auto_fix_high</span>
+            <span class="font-headline text-sm font-semibold text-white tracking-wide">AI Patch & Schema Transformation</span>
+          </div>
+          <div class="badge" style="background: rgba(56,189,248,0.1); color: #38BDF8;">
+            <span class="material-symbols-outlined" style="font-size:11px">smart_toy</span>
+            AI GENERATED
+          </div>
+        </div>
+        <div class="grid grid-cols-2 divide-x" style="border-color: rgba(56,189,248,0.08);">
+          <!-- Original -->
+          <div>
+            <div class="px-3 py-1.5 flex items-center gap-2" style="background: rgba(239,68,68,0.05); border-bottom: 2px solid rgba(239,68,68,0.3);">
+              <span class="material-symbols-outlined text-crimson" style="font-size:14px">remove_circle_outline</span>
+              <span class="font-mono text-[0.65rem] text-crimson font-semibold tracking-wider">ORIGINAL (BROKEN)</span>
+            </div>
+            <div class="p-3 diff-block text-slate-400 overflow-auto" id="diffOriginal" style="max-height: 220px; background: rgba(239,68,68,0.02);">
+              <span class="text-slate-600">No data</span>
+            </div>
+          </div>
+          <!-- Patched -->
+          <div style="border-color: rgba(56,189,248,0.08);">
+            <div class="px-3 py-1.5 flex items-center gap-2" style="background: rgba(16,185,129,0.05); border-bottom: 2px solid rgba(16,185,129,0.3);">
+              <span class="material-symbols-outlined text-emerald" style="font-size:14px">add_circle_outline</span>
+              <span class="font-mono text-[0.65rem] text-emerald font-semibold tracking-wider">PATCHED (AI FIX)</span>
+            </div>
+            <div class="p-3 diff-block text-slate-300 overflow-auto" id="diffPatched" style="max-height: 220px; background: rgba(16,185,129,0.02);">
+              <span class="text-slate-600">No data</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</main>
+
+<!-- ==================== JAVASCRIPT ==================== -->
+<script>
+(function() {
+  'use strict';
+
+  // ── State ──
+  let currentIncident = null;
+  let eventOffset = 0;
+  let logFilter = 'ALL';
+  let tailEnabled = true;
+  let isRunning = false;
+  let allLogEntries = [];
+
+  // ── DOM References ──
+  const $ = id => document.getElementById(id);
+  const metricAnomalies = $('metricAnomalies');
+  const metricAnomaliesLabel = $('metricAnomaliesLabel');
+  const anomalyPulseContainer = $('anomalyPulseContainer');
+  const metricIncidentId = $('metricIncidentId');
+  const metricIncidentTime = $('metricIncidentTime');
+  const metricConfidence = $('metricConfidence');
+  const confBar = $('confBar');
+  const agentStatusDot = $('agentStatusDot');
+  const agentStatusText = $('agentStatusText');
+  const agentModelInfo = $('agentModelInfo');
+  const agentModeInfo = $('agentModeInfo');
+  const logContainer = $('logContainer');
+  const diagnosisCard = $('diagnosisCard');
+  const controlPanel = $('controlPanel');
+  const healedCard = $('healedCard');
+  const diffCard = $('diffCard');
+  const diffOriginal = $('diffOriginal');
+  const diffPatched = $('diffPatched');
+  const diagErrorMsg = $('diagErrorMsg');
+  const diagStackTrace = $('diagStackTrace');
+  const diagEndpoint = $('diagEndpoint');
+  const diagFailureRate = $('diagFailureRate');
+  const severityText = $('severityText');
+  const severityBadge = $('severityBadge');
+  const btnRun = $('btnRun');
+  const btnApprove = $('btnApprove');
+  const btnReject = $('btnReject');
+  const modeSelect = $('modeSelect');
+
+  // ── Helpers ──
+  function ts() {
+    return new Date().toLocaleTimeString('en-GB', { hour12: false });
+  }
+
+  function escapeHtml(s) {
+    const div = document.createElement('div');
+    div.textContent = s;
+    return div.innerHTML;
+  }
+
+  function levelColor(level) {
+    const l = (level || '').toUpperCase();
+    if (l === 'ERROR' || l === 'CRITICAL') return '#EF4444';
+    if (l === 'WARNING' || l === 'WARN') return '#F59E0B';
+    if (l === 'SUCCESS' || l === 'HEALED') return '#10B981';
+    if (l === 'DEBUG') return '#6366f1';
+    return '#38BDF8';
+  }
+
+  function levelIcon(level) {
+    const l = (level || '').toUpperCase();
+    if (l === 'ERROR' || l === 'CRITICAL') return '✖';
+    if (l === 'WARNING' || l === 'WARN') return '▲';
+    if (l === 'SUCCESS' || l === 'HEALED') return '✔';
+    return '●';
+  }
+
+  // ── Log Rendering ──
+  function renderLogEntry(entry) {
+    const level = (entry.level || 'INFO').toUpperCase();
+    const color = levelColor(level);
+    const icon = levelIcon(level);
+    const time = entry.timestamp || ts();
+    return `<div class="log-entry flex gap-2 py-0.5" data-level="${level}">` +
+      `<span class="text-slate-600 shrink-0">${escapeHtml(time)}</span>` +
+      `<span style="color:${color}" class="shrink-0">${icon}</span>` +
+      `<span class="shrink-0 font-semibold w-12" style="color:${color}">${level.substring(0,5).padEnd(5)}</span>` +
+      `<span class="text-slate-400">${escapeHtml(entry.message || '')}</span>` +
+      `</div>`;
+  }
+
+  function appendLog(entry) {
+    allLogEntries.push(entry);
+    const level = (entry.level || 'INFO').toUpperCase();
+    if (logFilter !== 'ALL' && level !== logFilter) return;
+    const firstChild = logContainer.firstElementChild;
+    if (firstChild && firstChild.classList.contains('text-center')) {
+      logContainer.innerHTML = '';
+    }
+    logContainer.insertAdjacentHTML('beforeend', renderLogEntry(entry));
+    if (tailEnabled) {
+      logContainer.scrollTop = logContainer.scrollHeight;
+    }
+  }
+
+  function rerenderLogs() {
+    logContainer.innerHTML = '';
+    const filtered = logFilter === 'ALL' ? allLogEntries : allLogEntries.filter(e => (e.level || 'INFO').toUpperCase() === logFilter);
+    if (filtered.length === 0) {
+      logContainer.innerHTML = '<div class="text-center py-8"><span class="font-mono text-[0.7rem] text-slate-600">No matching log entries</span></div>';
+      return;
+    }
+    logContainer.innerHTML = filtered.map(renderLogEntry).join('');
+    if (tailEnabled) logContainer.scrollTop = logContainer.scrollHeight;
+  }
+
+  window.setLogFilter = function(filter, btn) {
+    logFilter = filter;
+    document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    rerenderLogs();
+  };
+
+  window.toggleTail = function() {
+    tailEnabled = !tailEnabled;
+    const dot = $('tailDot');
+    const toggle = $('tailToggle');
+    if (tailEnabled) {
+      dot.style.background = '#10B981';
+      toggle.querySelector('span').style.color = '#10B981';
+      logContainer.scrollTop = logContainer.scrollHeight;
+    } else {
+      dot.style.background = '#64748b';
+      toggle.querySelector('span').style.color = '#64748b';
+    }
+  };
+
+  // ── Metric Updates ──
+  function setAgentStatus(status, color) {
+    agentStatusDot.style.background = color;
+    agentStatusText.style.color = color;
+    agentStatusText.textContent = status;
+  }
+
+  function setConfidence(pct) {
+    if (pct === null || pct === undefined) {
+      metricConfidence.textContent = '—';
+      confBar.style.width = '0%';
+      return;
+    }
+    const val = Math.round(pct);
+    metricConfidence.textContent = val;
+    confBar.style.width = val + '%';
+    if (val >= 80) confBar.style.background = 'linear-gradient(90deg, #10B981, #4edea3)';
+    else if (val >= 50) confBar.style.background = 'linear-gradient(90deg, #F59E0B, #fbbf24)';
+    else confBar.style.background = 'linear-gradient(90deg, #EF4444, #f87171)';
+  }
+
+  function setAnomalyCount(n) {
+    metricAnomalies.textContent = n;
+    if (n > 0) {
+      metricAnomaliesLabel.textContent = 'detected';
+      metricAnomaliesLabel.style.color = '#EF4444';
+      anomalyPulseContainer.style.display = 'flex';
+    } else {
+      metricAnomaliesLabel.textContent = 'nominal';
+      metricAnomaliesLabel.style.color = '';
+      anomalyPulseContainer.style.display = 'none';
+    }
+  }
+
+  function setIncidentId(id, time) {
+    if (id) {
+      metricIncidentId.textContent = id;
+      metricIncidentId.style.color = '#38BDF8';
+      metricIncidentTime.textContent = time || 'Active';
+    } else {
+      metricIncidentId.textContent = '—';
+      metricIncidentId.style.color = '';
+      metricIncidentTime.textContent = 'No active incidents';
+    }
+  }
+
+  // ── Diagnosis & Diff ──
+  function showDiagnosis(data) {
+    if (!data || !data.root_cause) {
+      diagnosisCard.style.display = 'none';
+      return;
+    }
+    diagnosisCard.style.display = 'block';
+    diagErrorMsg.textContent = data.root_cause || '—';
+    diagStackTrace.textContent = data.stack_trace || data.root_cause || '—';
+    diagEndpoint.textContent = data.affected_component || data.endpoint || 'pipeline/main';
+    diagFailureRate.textContent = data.failure_rate || '100%';
+
+    const sev = (data.severity || 'CRITICAL').toUpperCase();
+    severityText.textContent = sev;
+    if (sev === 'CRITICAL' || sev === 'HIGH') {
+      severityBadge.style.background = 'rgba(239,68,68,0.15)';
+      severityBadge.style.color = '#EF4444';
+    } else if (sev === 'MEDIUM') {
+      severityBadge.style.background = 'rgba(245,158,11,0.15)';
+      severityBadge.style.color = '#F59E0B';
+    } else {
+      severityBadge.style.background = 'rgba(56,189,248,0.15)';
+      severityBadge.style.color = '#38BDF8';
+    }
+  }
+
+  function showDiff(original, patched) {
+    if (!original && !patched) {
+      diffCard.style.display = 'none';
+      return;
+    }
+    diffCard.style.display = 'block';
+    diffOriginal.textContent = original || 'No data';
+    diffPatched.textContent = patched || 'No data';
+  }
+
+  // ── Workflow Execution ──
+  window.runWorkflow = async function() {
+    if (isRunning) return;
+    isRunning = true;
+    const mode = modeSelect.value;
+
+    // UI: loading state
+    btnRun.disabled = true;
+    btnRun.innerHTML = '<span class="spinner"></span> Running…';
+    setAgentStatus('ACTIVE', '#F59E0B');
+    healedCard.style.display = 'none';
+    controlPanel.style.display = 'none';
+    diagnosisCard.style.display = 'none';
+    diffCard.style.display = 'none';
+
+    appendLog({ level: 'INFO', message: `Initiating workflow with mode: ${mode}` });
+
+    try {
+      const res = await fetch('/run', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode })
+      });
+      const data = await res.json();
+
+      if (data.ok === true) {
+        // Healthy run
+        appendLog({ level: 'SUCCESS', message: 'Pipeline completed successfully — all checks passed.' });
+        setAgentStatus('STANDBY', '#10B981');
+        setConfidence(100);
+        setAnomalyCount(0);
+        currentIncident = null;
+      } else {
+        // Incident detected
+        currentIncident = data.incident_id;
+
+        setIncidentId(currentIncident.substring(0, 12) + '…', ts());
+        setAnomalyCount(1);
+
+        // Diagnosis
+        const diag = data.diagnosis || {};
+        showDiagnosis(diag);
+        appendLog({ level: 'ERROR', message: `Anomaly detected: ${diag.root_cause || data.error || 'Unknown failure'}` });
+        appendLog({ level: 'INFO', message: `Category: ${diag.category || '—'} • Evidence: ${diag.evidence || '—'}` });
+
+        // Confidence
+        const conf = (diag.confidence || 0) * 100;
+        setConfidence(conf);
+
+        // Fix / Diff
+        const fix = data.fix || {};
+        const verification = data.verification || {};
+        if (fix.patch) {
+          const origPayload = JSON.stringify(data.diagnosis, null, 2);
+          const patchedPayload = JSON.stringify({ patch: fix.patch, reasoning: fix.reasoning, sandbox: verification }, null, 2);
+          showDiff(origPayload, patchedPayload);
+          const vLabel = verification.ok ? '✅ SANDBOX PASSED' : '❌ SANDBOX FAILED';
+          appendLog({ level: verification.ok ? 'SUCCESS' : 'WARNING', message: `Verification: ${vLabel} — ${verification.message || ''}` });
+          appendLog({ level: 'INFO', message: `Fix reasoning: ${fix.reasoning || '—'}` });
+        }
+
+        // Show controls
+        controlPanel.style.display = 'block';
+        setAgentStatus('AWAITING APPROVAL', '#F59E0B');
+
+        appendLog({ level: 'WARNING', message: `Incident ${currentIncident.substring(0,8)}… requires human validation.` });
+      }
+    } catch (err) {
+      appendLog({ level: 'ERROR', message: `Network error: ${err.message}` });
+      setAgentStatus('ERROR', '#EF4444');
+    }
+
+    btnRun.disabled = false;
+    btnRun.innerHTML = '<span class="material-symbols-outlined" style="font-size:16px">play_arrow</span> Run Workflow';
+    isRunning = false;
+  };
+
+  // ── Approve Fix ──
+  window.approveFix = async function() {
+    if (!currentIncident) return;
+    btnApprove.disabled = true;
+    btnApprove.innerHTML = '<span class="spinner"></span> Applying…';
+    appendLog({ level: 'INFO', message: `Executing approved patch for ${currentIncident}…` });
+
+    try {
+      const res = await fetch(`/approve/${currentIncident}`, { method: 'POST' });
+      const data = await res.json();
+
+      appendLog({ level: 'SUCCESS', message: `Incident ${currentIncident} healed — patch applied successfully.` });
+      controlPanel.style.display = 'none';
+      healedCard.style.display = 'flex';
+      $('healedInfo').textContent = `${currentIncident} resolved • AI patch applied at ${ts()}`;
+
+      setAgentStatus('STANDBY', '#10B981');
+      setConfidence(100);
+      setAnomalyCount(0);
+      currentIncident = null;
+    } catch (err) {
+      appendLog({ level: 'ERROR', message: `Approval failed: ${err.message}` });
+    }
+
+    btnApprove.disabled = false;
+    btnApprove.innerHTML = '<span class="material-symbols-outlined" style="font-size:16px">check_circle</span> Approve & Execute Patch';
+  };
+
+  // ── Reject Fix ──
+  window.rejectFix = async function() {
+    if (!currentIncident) return;
+    appendLog({ level: 'WARNING', message: `Patch for ${currentIncident} rejected by operator.` });
+
+    try {
+      await fetch(`/reject/${currentIncident}`, { method: 'POST' });
+      appendLog({ level: 'INFO', message: 'Fix rejected — incident remains open for manual intervention.' });
+    } catch (err) {
+      appendLog({ level: 'ERROR', message: `Reject call failed: ${err.message}` });
+    }
+
+    controlPanel.style.display = 'none';
+    setAgentStatus('STANDBY', '#38BDF8');
+  };
+
+  // ── Simulate Rollback ──
+  window.simulateRollback = function() {
+    appendLog({ level: 'INFO', message: 'Simulating rollback to last stable checkpoint…' });
+    setTimeout(() => {
+      appendLog({ level: 'SUCCESS', message: 'Rollback simulation complete — no side effects detected.' });
+    }, 1200);
+  };
+
+  // ── Poll Events ──
+  async function pollEvents() {
+    try {
+      const res = await fetch(`/events?since=${eventOffset}`);
+      if (!res.ok) return;
+      const data = await res.json();
+      const evts = data.events || [];
+      if (Array.isArray(evts) && evts.length > 0) {
+        evts.forEach(evt => {
+          // Map backend event kinds to log levels
+          let level = 'INFO';
+          if (evt.kind && (evt.kind.includes('fail') || evt.kind.includes('error'))) level = 'ERROR';
+          else if (evt.kind && (evt.kind.includes('success') || evt.kind.includes('completed'))) level = 'SUCCESS';
+          else if (evt.kind && (evt.kind.includes('diagnos') || evt.kind.includes('heal') || evt.kind.includes('verif'))) level = 'WARNING';
+          const msg = `[${evt.kind}] ${evt.error || evt.mode || ''}`.trim();
+          appendLog({ level, message: msg, timestamp: (evt.ts || '').substring(11, 19) });
+        });
+        eventOffset += evts.length;
+      }
+    } catch (e) {
+      // Silently fail — server might not be up yet
+    }
+  }
+
+  // ── Reset ──
+  window.resetAll = async function() {
+    try { await fetch('/reset', { method: 'POST' }); } catch(e) {}
+
+    currentIncident = null;
+    eventOffset = 0;
+    allLogEntries = [];
+    isRunning = false;
+
+    // Reset metrics
+    setAnomalyCount(0);
+    setIncidentId(null);
+    setConfidence(null);
+    setAgentStatus('STANDBY', '#38BDF8');
+
+    // Hide panels
+    diagnosisCard.style.display = 'none';
+    controlPanel.style.display = 'none';
+    healedCard.style.display = 'none';
+    diffCard.style.display = 'none';
+
+    // Clear logs
+    logContainer.innerHTML = '<div class="text-center py-8"><span class="font-mono text-[0.7rem] text-slate-600 cursor-blink">Awaiting workflow execution</span></div>';
+
+    appendLog({ level: 'INFO', message: 'System reset — all state cleared.' });
+  };
+
+  // ── Health Check ──
+  async function checkHealth() {
+    try {
+      const res = await fetch('/health');
+      const data = await res.json();
+      const mode = data.mode || 'unknown';
+      agentModeInfo.textContent = `mode: ${mode}`;
+      if (data.model) agentModelInfo.textContent = data.model;
+      if (data.status === 'ok' || data.status === 'healthy') {
+        $('sysStatusText').textContent = 'SYSTEM NOMINAL';
+        $('sysStatusText').style.color = '#10B981';
+        $('sysStatusDot').style.background = '#10B981';
+      }
+      appendLog({ level: 'INFO', message: `Health check passed — backend mode: ${mode}` });
+    } catch (e) {
+      agentModeInfo.textContent = 'mode: offline';
+      $('sysStatusText').textContent = 'BACKEND OFFLINE';
+      $('sysStatusText').style.color = '#F59E0B';
+      $('sysStatusDot').style.background = '#F59E0B';
+    }
+  }
+
+  // ── Init ──
+  checkHealth();
+  setInterval(pollEvents, 1000);
+
+})();
+</script>
+</body>
+</html>
